@@ -7,6 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+import cv2
+
 #Hyperparameters
 learning_rate = 0.0005
 gamma         = 0.98
@@ -14,8 +16,9 @@ buffer_limit  = 50000
 batch_size    = 32
 
 class ReplayBuffer():
-    def __init__(self):
+    def __init__(self, device):
         self.buffer = collections.deque(maxlen=buffer_limit)
+        self.device = device
     
     def put(self, transition):
         self.buffer.append(transition)
@@ -32,9 +35,9 @@ class ReplayBuffer():
             s_prime_lst.append(s_prime)
             done_mask_lst.append([done_mask])
 
-        return torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst), \
-               torch.tensor(r_lst), torch.tensor(s_prime_lst, dtype=torch.float), \
-               torch.tensor(done_mask_lst)
+        return torch.tensor(s_lst, dtype=torch.float).to(self.device), torch.tensor(a_lst).to(self.device), \
+               torch.tensor(r_lst).to(self.device), torch.tensor(s_prime_lst, dtype=torch.float).to(self.device), \
+               torch.tensor(done_mask_lst).to(self.device)
     
     def size(self):
         return len(self.buffer)
@@ -75,11 +78,18 @@ def train(q, q_target, memory, optimizer):
         optimizer.step()
 
 def main():
-    env = gym.make('CartPole-v1')
+    env = gym.make('CartPole-v1', render_mode = 'rgb_array')
+    if torch.cuda.is_available():
+        device= 'cuda:0'
+    else:
+        device = 'cpu'
+
     q = Qnet()
     q_target = Qnet()
     q_target.load_state_dict(q.state_dict())
-    memory = ReplayBuffer()
+    q.to(device)
+    q_target.to(device)
+    memory = ReplayBuffer(device)
 
     print_interval = 20
     score = 0.0  
@@ -87,20 +97,25 @@ def main():
 
     for n_epi in range(10000):
         epsilon = max(0.01, 0.08 - 0.01*(n_epi/200)) #Linear annealing from 8% to 1%
-        s = env.reset()[0]
-        done = False
+        observation, info = env.reset()
+        terminated = False
 
-        while not done:
-            a = q.sample_action(torch.from_numpy(s).float(), epsilon)      
-            s_prime, r, done, info, _ = env.step(a)
-            done_mask = 0.0 if done else 1.0
-            memory.put((s,a,r/100.0,s_prime, done_mask))
-            s = s_prime
+        while not terminated:
+            action = q.sample_action(torch.from_numpy(observation).float().to(device), epsilon)      
+            observation_prime, reward, terminated, truncated, info = env.step(action)
+            done_mask = 0.0 if terminated else 1.0
+            memory.put((observation,action,reward/100.0,observation_prime, done_mask))
+            observation = observation_prime
 
-            score += r
-            if done:
+            score += reward
+            if terminated:
                 break
-            
+
+            # Render into buffer.
+            frame = env.render()
+            cv2.imshow('frame', frame)
+            cv2.waitKey(1)
+
         if memory.size()>2000:
             train(q, q_target, memory, optimizer)
 
@@ -109,6 +124,7 @@ def main():
             print("n_episode :{}, score : {:.1f}, n_buffer : {}, eps : {:.1f}%".format(
                                                             n_epi, score/print_interval, memory.size(), epsilon*100))
             score = 0.0
+
     env.close()
 
 if __name__ == '__main__':

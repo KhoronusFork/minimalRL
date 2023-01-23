@@ -20,8 +20,9 @@ batch_size    = 4     # Indicates 4 sequences per mini-batch (4*rollout_len = 40
 c             = 1.0   # For truncating importance sampling ratio
 
 class ReplayBuffer():
-    def __init__(self):
+    def __init__(self, device):
         self.buffer = collections.deque(maxlen=buffer_limit)
+        self.device = device
 
     def put(self, seq_data):
         self.buffer.append(seq_data)
@@ -47,8 +48,8 @@ class ReplayBuffer():
                 is_first_lst.append(is_first)
                 is_first = False
 
-        s,a,r,prob,done_mask,is_first = torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst), \
-                                        r_lst, torch.tensor(prob_lst, dtype=torch.float), done_lst, \
+        s,a,r,prob,done_mask,is_first = torch.tensor(s_lst, dtype=torch.float).to(self.device), torch.tensor(a_lst).to(self.device), \
+                                        r_lst, torch.stack(prob_lst).to(self.device), done_lst, \
                                         is_first_lst
         return s,a,r,prob,done_mask,is_first
     
@@ -73,7 +74,7 @@ class ActorCritic(nn.Module):
         q = self.fc_q(x)
         return q
       
-def train(model, optimizer, memory, on_policy=False):
+def train(device, model, optimizer, memory, on_policy=False):
     s,a,r,prob,done_mask,is_first = memory.sample(on_policy)
     
     q = model.q(s)
@@ -82,7 +83,7 @@ def train(model, optimizer, memory, on_policy=False):
     pi_a = pi.gather(1,a)
     v = (q * pi).sum(1).unsqueeze(1).detach()
     
-    rho = pi.detach()/prob
+    rho = pi.detach()/prob.detach()
     rho_a = rho.gather(1,a)
     rho_bar = rho_a.clamp(max=c)
     correction_coeff = (1-c/rho).clamp(min=0)
@@ -98,7 +99,7 @@ def train(model, optimizer, memory, on_policy=False):
             q_ret = v[i-1] * done_mask[i-1] # When a new sequence begins, q_ret is initialized  
             
     q_ret_lst.reverse()
-    q_ret = torch.tensor(q_ret_lst, dtype=torch.float).unsqueeze(1)
+    q_ret = torch.tensor(q_ret_lst, dtype=torch.float).unsqueeze(1).to(device)
     
     loss1 = -rho_bar * torch.log(pi_a) * (q_ret - v) 
     loss2 = -correction_coeff * pi.detach() * torch.log(pi) * (q.detach()-v) # bias correction term
@@ -109,35 +110,39 @@ def train(model, optimizer, memory, on_policy=False):
     optimizer.step()
         
 def main():
-    env = gym.make('CartPole-v1')
-    memory = ReplayBuffer()
-    model = ActorCritic()
+    env = gym.make('CartPole-v1', render_mode = 'rgb_array')
+    if torch.cuda.is_available():
+        device= 'cuda:0'
+    else:
+        device = 'cpu'
+    memory = ReplayBuffer(device)
+    model = ActorCritic().to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     score = 0.0
     print_interval = 20    
 
     for n_epi in range(10000):
-        s = env.reset()[0]
-        done = False
+        observation, info = env.reset()
+        terminated = False
         
-        while not done:
+        while not terminated:
             seq_data = []
             for t in range(rollout_len): 
-                prob = model.pi(torch.from_numpy(s).float())
-                a = Categorical(prob).sample().item()
-                s_prime, r, done, info, _ = env.step(a)
-                seq_data.append((s, a, r/100.0, prob.detach().numpy(), done))
+                prob = model.pi(torch.from_numpy(observation).float().to(device))
+                action = Categorical(prob).sample().item()
+                observation_prime, reward, terminated, truncated, info = env.step(action)
+                seq_data.append((observation, action, reward/100.0, prob, terminated))
 
-                score +=r
-                s = s_prime
-                if done:
+                score +=reward
+                observation = observation_prime
+                if terminated:
                     break
-                    
+
             memory.put(seq_data)
             if memory.size()>500:
-                train(model, optimizer, memory, on_policy=True)
-                train(model, optimizer, memory)
+                train(device, model, optimizer, memory, on_policy=True)
+                train(device, model, optimizer, memory)
         
         if n_epi%print_interval==0 and n_epi!=0:
             print("# of episode :{}, avg score : {:.1f}, buffer size : {}".format(n_epi, score/print_interval, memory.size()))

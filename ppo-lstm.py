@@ -1,5 +1,5 @@
 #PPO-LSTM
-import gym
+import gymnasium as gym
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,9 +17,10 @@ K_epoch       = 2
 T_horizon     = 20
 
 class PPO(nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super(PPO, self).__init__()
         self.data = []
+        self.device = device
         
         self.fc1   = nn.Linear(4,64)
         self.lstm  = nn.LSTM(64,32)
@@ -60,9 +61,9 @@ class PPO(nn.Module):
             done_mask = 0 if done else 1
             done_lst.append([done_mask])
             
-        s,a,r,s_prime,done_mask,prob_a = torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst), \
-                                         torch.tensor(r_lst), torch.tensor(s_prime_lst, dtype=torch.float), \
-                                         torch.tensor(done_lst, dtype=torch.float), torch.tensor(prob_a_lst)
+        s,a,r,s_prime,done_mask,prob_a = torch.tensor(s_lst, dtype=torch.float).to(self.device), torch.tensor(a_lst).to(self.device), \
+                                         torch.tensor(r_lst).to(self.device), torch.tensor(s_prime_lst, dtype=torch.float).to(self.device), \
+                                         torch.tensor(done_lst, dtype=torch.float).to(self.device), torch.tensor(prob_a_lst).to(self.device)
         self.data = []
         return s,a,r,s_prime, done_mask, prob_a, h_in_lst[0], h_out_lst[0]
         
@@ -76,15 +77,15 @@ class PPO(nn.Module):
             td_target = r + gamma * v_prime * done_mask
             v_s = self.v(s, first_hidden).squeeze(1)
             delta = td_target - v_s
-            delta = delta.detach().numpy()
+            delta = torch.flip(delta, (0,)) #delta
             
             advantage_lst = []
             advantage = 0.0
-            for item in delta[::-1]:
+            for item in delta:
                 advantage = gamma * lmbda * advantage + item[0]
                 advantage_lst.append([advantage])
             advantage_lst.reverse()
-            advantage = torch.tensor(advantage_lst, dtype=torch.float)
+            advantage = torch.tensor(advantage_lst, dtype=torch.float).to(self.device)
 
             pi, _ = self.pi(s, first_hidden)
             pi_a = pi.squeeze(1).gather(1,a)
@@ -99,30 +100,34 @@ class PPO(nn.Module):
             self.optimizer.step()
         
 def main():
-    env = gym.make('CartPole-v1')
-    model = PPO()
+    env = gym.make('CartPole-v1', render_mode = 'rgb_array')
+    if torch.cuda.is_available():
+        device= 'cuda:0'
+    else:
+        device = 'cpu'
+    model = PPO(device).to(device)
     score = 0.0
     print_interval = 20
     
     for n_epi in range(10000):
-        h_out = (torch.zeros([1, 1, 32], dtype=torch.float), torch.zeros([1, 1, 32], dtype=torch.float))
-        s = env.reset()
-        done = False
+        h_out = (torch.zeros([1, 1, 32], dtype=torch.float).to(device), torch.zeros([1, 1, 32], dtype=torch.float).to(device))
+        observation, info = env.reset()
+        terminated = False
         
-        while not done:
+        while not terminated:
             for t in range(T_horizon):
                 h_in = h_out
-                prob, h_out = model.pi(torch.from_numpy(s).float(), h_in)
+                prob, h_out = model.pi(torch.from_numpy(observation).float().to(device), h_in)
                 prob = prob.view(-1)
                 m = Categorical(prob)
-                a = m.sample().item()
-                s_prime, r, done, info = env.step(a)
+                action = m.sample().item()
+                observation_prime, reward, terminated, truncated, info = env.step(action)
 
-                model.put_data((s, a, r/100.0, s_prime, prob[a].item(), h_in, h_out, done))
-                s = s_prime
+                model.put_data((observation, action, reward/100.0, observation_prime, prob[action].item(), h_in, h_out, terminated))
+                observation = observation_prime
 
-                score += r
-                if done:
+                score += reward
+                if terminated:
                     break
                     
             model.train_net()

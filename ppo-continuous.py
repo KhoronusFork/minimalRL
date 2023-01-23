@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,9 +17,10 @@ buffer_size    = 30
 minibatch_size = 32
 
 class PPO(nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super(PPO, self).__init__()
         self.data = []
+        self.device = device
         
         self.fc1   = nn.Linear(3,128)
         self.fc_mu = nn.Linear(128,1)
@@ -69,9 +70,9 @@ class PPO(nn.Module):
                 prob_a_batch.append(prob_a_lst)
                 done_batch.append(done_lst)
                     
-            mini_batch = torch.tensor(s_batch, dtype=torch.float), torch.tensor(a_batch, dtype=torch.float), \
-                          torch.tensor(r_batch, dtype=torch.float), torch.tensor(s_prime_batch, dtype=torch.float), \
-                          torch.tensor(done_batch, dtype=torch.float), torch.tensor(prob_a_batch, dtype=torch.float)
+            mini_batch = torch.tensor(s_batch, dtype=torch.float).to(self.device), torch.tensor(a_batch, dtype=torch.float).to(self.device), \
+                          torch.tensor(r_batch, dtype=torch.float).to(self.device), torch.tensor(s_prime_batch, dtype=torch.float).to(self.device), \
+                          torch.tensor(done_batch, dtype=torch.float).to(self.device), torch.tensor(prob_a_batch, dtype=torch.float).to(self.device)
             data.append(mini_batch)
 
         return data
@@ -83,15 +84,15 @@ class PPO(nn.Module):
             with torch.no_grad():
                 td_target = r + gamma * self.v(s_prime) * done_mask
                 delta = td_target - self.v(s)
-            delta = delta.numpy()
+            delta = torch.flip(delta, (0,)) #delta
 
             advantage_lst = []
             advantage = 0.0
-            for delta_t in delta[::-1]:
+            for delta_t in delta:
                 advantage = gamma * lmbda * advantage + delta_t[0]
                 advantage_lst.append([advantage])
             advantage_lst.reverse()
-            advantage = torch.tensor(advantage_lst, dtype=torch.float)
+            advantage = torch.tensor(advantage_lst, dtype=torch.float).to(self.device)
             data_with_adv.append((s, a, r, s_prime, done_mask, old_log_prob, td_target, advantage))
 
         return data_with_adv
@@ -105,6 +106,7 @@ class PPO(nn.Module):
             for i in range(K_epoch):
                 for mini_batch in data:
                     s, a, r, s_prime, done_mask, old_log_prob, td_target, advantage = mini_batch
+                    advantage = advantage.unsqueeze(1)
 
                     mu, std = self.pi(s, softmax_dim=1)
                     dist = Normal(mu, std)
@@ -122,31 +124,36 @@ class PPO(nn.Module):
                     self.optimization_step += 1
         
 def main():
-    env = gym.make('Pendulum-v0')
-    model = PPO()
+    env = gym.make('Pendulum-v1', render_mode = 'rgb_array')
+    if torch.cuda.is_available():
+        device= 'cuda:0'
+    else:
+        device = 'cpu'
+    model = PPO(device).to(device)
     score = 0.0
     print_interval = 20
     rollout = []
 
     for n_epi in range(10000):
-        s = env.reset()
-        done = False
-        while not done:
-            for t in range(rollout_len):
-                mu, std = model.pi(torch.from_numpy(s).float())
-                dist = Normal(mu, std)
-                a = dist.sample()
-                log_prob = dist.log_prob(a)
-                s_prime, r, done, info = env.step([a.item()])
+        observation, info = env.reset()
+        terminated = False
 
-                rollout.append((s, a, r/10.0, s_prime, log_prob.item(), done))
+        while not terminated:
+            for t in range(rollout_len):
+                mu, std = model.pi(torch.from_numpy(observation).float().to(device))
+                dist = Normal(mu, std)
+                action = dist.sample()
+                log_prob = dist.log_prob(action)
+                observation_prime, reward, terminated, truncated, info = env.step([action.item()])
+
+                rollout.append((observation, action, reward/10.0, observation_prime, log_prob.item(), terminated))
                 if len(rollout) == rollout_len:
                     model.put_data(rollout)
                     rollout = []
 
-                s = s_prime
-                score += r
-                if done:
+                observation = observation_prime
+                score += reward
+                if terminated:
                     break
 
             model.train_net()

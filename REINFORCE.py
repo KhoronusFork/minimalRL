@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -37,24 +37,28 @@ class Policy(nn.Module):
         self.data = []
 
 def main():
-    env = gym.make('CartPole-v1')
-    pi = Policy()
+    env = gym.make('CartPole-v1', render_mode = 'rgb_array')
+    if torch.cuda.is_available():
+        device= 'cuda:0'
+    else:
+        device = 'cpu'
+    pi = Policy().to(device)
     score = 0.0
     print_interval = 20
     
     
     for n_epi in range(10000):
-        s = env.reset()
-        done = False
+        observation, info = env.reset()
+        terminated = False
         
-        while not done: # CartPole-v1 forced to terminates at 500 step.
-            prob = pi(torch.from_numpy(s).float())
+        while not terminated: # CartPole-v1 forced to terminates at 500 step.
+            prob = pi(torch.from_numpy(observation).float().to(device))
             m = Categorical(prob)
-            a = m.sample()
-            s_prime, r, done, info = env.step(a.item())
-            pi.put_data((r,prob[a]))
-            s = s_prime
-            score += r
+            action = m.sample()
+            observation_prime, reward, terminated, truncated, info = env.step(action.item())
+            pi.put_data((reward,prob[action]))
+            observation = observation_prime
+            score += reward
             
         pi.train_net()
         

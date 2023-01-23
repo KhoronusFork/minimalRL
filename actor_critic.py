@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,9 +11,10 @@ gamma         = 0.98
 n_rollout     = 10
 
 class ActorCritic(nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super(ActorCritic, self).__init__()
         self.data = []
+        self.device = device
         
         self.fc1 = nn.Linear(4,256)
         self.fc_pi = nn.Linear(256,2)
@@ -45,9 +46,9 @@ class ActorCritic(nn.Module):
             done_mask = 0.0 if done else 1.0
             done_lst.append([done_mask])
         
-        s_batch, a_batch, r_batch, s_prime_batch, done_batch = torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst), \
-                                                               torch.tensor(r_lst, dtype=torch.float), torch.tensor(s_prime_lst, dtype=torch.float), \
-                                                               torch.tensor(done_lst, dtype=torch.float)
+        s_batch, a_batch, r_batch, s_prime_batch, done_batch = torch.tensor(s_lst, dtype=torch.float).to(self.device), torch.tensor(a_lst).to(self.device), \
+                                                               torch.tensor(r_lst, dtype=torch.float).to(self.device), torch.tensor(s_prime_lst, dtype=torch.float).to(self.device), \
+                                                               torch.tensor(done_lst, dtype=torch.float).to(self.device)
         self.data = []
         return s_batch, a_batch, r_batch, s_prime_batch, done_batch
   
@@ -65,26 +66,32 @@ class ActorCritic(nn.Module):
         self.optimizer.step()         
       
 def main():  
-    env = gym.make('CartPole-v1')
-    model = ActorCritic()    
+    env = gym.make('CartPole-v1', render_mode = 'rgb_array')
+    if torch.cuda.is_available():
+        device= 'cuda:0'
+    else:
+        device = 'cpu'
+    model = ActorCritic(device).to(device)    
     print_interval = 20
     score = 0.0
 
     for n_epi in range(10000):
-        done = False
-        s = env.reset()
-        while not done:
+        observation, info = env.reset()
+        terminated = False
+
+        while not terminated:
             for t in range(n_rollout):
-                prob = model.pi(torch.from_numpy(s).float())
+                prob = model.pi(torch.from_numpy(observation).float().to(device))
                 m = Categorical(prob)
-                a = m.sample().item()
-                s_prime, r, done, info = env.step(a)
-                model.put_data((s,a,r,s_prime,done))
+                action = m.sample().item()
+                observation_prime, reward, terminated, truncated, info = env.step(action)
+
+                model.put_data((observation,action,reward,observation_prime,terminated))
                 
-                s = s_prime
-                score += r
+                observation = observation_prime
+                score += reward
                 
-                if done:
+                if terminated:
                     break                     
             
             model.train_net()

@@ -19,8 +19,9 @@ target_entropy  = -1.0 # for automated alpha update
 lr_alpha        = 0.001  # for automated alpha update
 
 class ReplayBuffer():
-    def __init__(self):
+    def __init__(self, device):
         self.buffer = collections.deque(maxlen=buffer_limit)
+        self.device = device
 
     def put(self, transition):
         self.buffer.append(transition)
@@ -38,9 +39,9 @@ class ReplayBuffer():
             done_mask = 0.0 if done else 1.0 
             done_mask_lst.append([done_mask])
         
-        return torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst, dtype=torch.float), \
-                torch.tensor(r_lst, dtype=torch.float), torch.tensor(s_prime_lst, dtype=torch.float), \
-                torch.tensor(done_mask_lst, dtype=torch.float)
+        return torch.tensor(s_lst, dtype=torch.float).to(self.device), torch.tensor(a_lst, dtype=torch.float).to(self.device), \
+                torch.tensor(r_lst, dtype=torch.float).to(self.device), torch.tensor(s_prime_lst, dtype=torch.float).to(self.device), \
+                torch.tensor(done_mask_lst, dtype=torch.float).to(self.device)
     
     def size(self):
         return len(self.buffer)
@@ -129,10 +130,14 @@ def calc_target(pi, q1, q2, mini_batch):
     return target
     
 def main():
-    env = gym.make('Pendulum-v1')
-    memory = ReplayBuffer()
-    q1, q2, q1_target, q2_target = QNet(lr_q), QNet(lr_q), QNet(lr_q), QNet(lr_q)
-    pi = PolicyNet(lr_pi)
+    env = gym.make('Pendulum-v1', render_mode = 'rgb_array')
+    if torch.cuda.is_available():
+        device= 'cuda:0'
+    else:
+        device = 'cpu'
+    memory = ReplayBuffer(device)
+    q1, q2, q1_target, q2_target = QNet(lr_q).to(device), QNet(lr_q).to(device), QNet(lr_q).to(device), QNet(lr_q).to(device)
+    pi = PolicyNet(lr_pi).to(device)
 
     q1_target.load_state_dict(q1.state_dict())
     q2_target.load_state_dict(q2.state_dict())
@@ -142,19 +147,19 @@ def main():
 
     for n_epi in range(10000):
         print('n_epi:{}'.format(n_epi))
-        s = env.reset()[0]
-        done = False
+        observation, info = env.reset()
+        terminated = False
 
         count = 0
-        while not done:
-            a, log_prob= pi(torch.from_numpy(s).float())
-            s_prime, r, done, info, _, = env.step([2.0*a.item()])
-            memory.put((s, a.item(), r/10.0, s_prime, done))
-            score +=r
-            s = s_prime
+        while not terminated:
+            action, log_prob= pi(torch.from_numpy(observation).float().to(device))
+            observation_prime, reward, terminated, truncated, info = env.step([2.0*action.item()])
+            memory.put((observation, action.item(), reward/10.0, observation_prime, terminated))
+            score += reward
+            observation = observation_prime
             count += 1
             if count % 10000 == 0:
-                print('while not done[{}]: s_prime:{} r:{} done:{} info:{}'.format(count, s_prime, r, done, info))
+                print('while not done[{}]: s_prime:{} r:{} done:{} info:{}'.format(count, observation_prime, reward, terminated, info))
                 
         if memory.size()>1000:
             for i in range(20):

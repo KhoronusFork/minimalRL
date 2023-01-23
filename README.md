@@ -1,5 +1,22 @@
 # minimalRL-pytorch
 
+Updated code of minimalRL-pytorch
+
+Original code at: https://github.com/seungeunrho/minimalRL
+
+Additional models from pull requests. Credit at the top of the file.
+
+## Not completed
+ppo-continuous, ppo-continuous-improved: Termination is hard to reach in short amount of time.
+r2d2 : Contiguous error. TODO: Fix
+
+## Render
+dqn visualizes the render during the training (slow).
+
+
+# From the original readme.md
+
+
 Implementations of basic RL algorithms with minimal lines of codes! (PyTorch based)
 
 * Each algorithm is complete within a single file.
@@ -24,7 +41,6 @@ Implementations of basic RL algorithms with minimal lines of codes! (PyTorch bas
 9. [SAC](https://github.com/seungeunrho/minimalRL/blob/master/sac.py) (171 lines) added!! 
 10. [PPO-Continuous](https://github.com/seungeunrho/minimalRL/blob/master/ppo-continuous.py) (161 lines) added!!
 11. [Vtrace](https://github.com/seungeunrho/minimalRL/blob/master/vtrace.py) (137 lines) added!!
-12. Any suggestion ...? 
 
 
 ## Dependencies
