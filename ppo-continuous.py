@@ -17,15 +17,15 @@ buffer_size    = 30
 minibatch_size = 32
 
 class PPO(nn.Module):
-    def __init__(self, device):
+    def __init__(self, device, input_size, output_size):
         super(PPO, self).__init__()
         self.data = []
         self.device = device
         
-        self.fc1   = nn.Linear(3,128)
-        self.fc_mu = nn.Linear(128,1)
-        self.fc_std  = nn.Linear(128,1)
-        self.fc_v = nn.Linear(128,1)
+        self.fc1   = nn.Linear(input_size,128)
+        self.fc_mu = nn.Linear(128,output_size)
+        self.fc_std  = nn.Linear(128,output_size)
+        self.fc_v = nn.Linear(128,output_size)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
         self.optimization_step = 0
 
@@ -69,10 +69,29 @@ class PPO(nn.Module):
                 s_prime_batch.append(s_prime_lst)
                 prob_a_batch.append(prob_a_lst)
                 done_batch.append(done_lst)
-                    
-            mini_batch = torch.tensor(s_batch, dtype=torch.float).to(self.device), torch.tensor(a_batch, dtype=torch.float).to(self.device), \
-                          torch.tensor(r_batch, dtype=torch.float).to(self.device), torch.tensor(s_prime_batch, dtype=torch.float).to(self.device), \
-                          torch.tensor(done_batch, dtype=torch.float).to(self.device), torch.tensor(prob_a_batch, dtype=torch.float).to(self.device)
+
+
+            vv = []
+            for i in range(0, len(a_batch)):
+                v = torch.stack(a_batch[i][0])
+                vv.append(v)
+            vvv = torch.stack(vv)
+
+            vv1 = []
+            for i in range(0, len(prob_a_batch)):
+                v = torch.stack(prob_a_batch[i][0])
+                vv1.append(v)
+            vvv1 = torch.stack(vv)
+
+                        #torch.tensor(a_batch, dtype=torch.float).to(self.device), \
+                        #torch.stack(a_batch).to(self.device), \
+                        #torch.tensor(prob_a_batch, dtype=torch.float).to(self.device)
+            mini_batch = torch.tensor(np.array(s_batch), dtype=torch.float).to(self.device), \
+                        vvv.to(self.device), \
+                        torch.tensor(np.array(r_batch), dtype=torch.float).to(self.device), \
+                        torch.tensor(np.array(s_prime_batch), dtype=torch.float).to(self.device), \
+                        torch.tensor(done_batch, dtype=torch.float).to(self.device), \
+                        vvv1.to(self.device)
             data.append(mini_batch)
 
         return data
@@ -92,7 +111,13 @@ class PPO(nn.Module):
                 advantage = gamma * lmbda * advantage + delta_t[0]
                 advantage_lst.append([advantage])
             advantage_lst.reverse()
-            advantage = torch.tensor(advantage_lst, dtype=torch.float).to(self.device)
+
+            vv = []
+            for i in range(0, len(advantage_lst)):
+                v = advantage_lst[i][0]
+                vv.append(v)
+            vvv = torch.stack(vv)
+            advantage = vvv.to(self.device)
             data_with_adv.append((s, a, r, s_prime, done_mask, old_log_prob, td_target, advantage))
 
         return data_with_adv
@@ -123,30 +148,48 @@ class PPO(nn.Module):
                     self.optimizer.step()
                     self.optimization_step += 1
         
+
+def action_space_dim(env):
+    if type(env.action_space) == gym.spaces.discrete.Discrete:
+        return env.action_space.n
+    else:
+        return env.action_space.shape[0]
+def observation_space_dim(env):
+    return env.observation_space.shape[0]
+
 def main():
-    env = gym.make('Pendulum-v1', render_mode = 'rgb_array')
+    #env = gym.make('Pendulum-v1', render_mode = 'rgb_array')
+    env = gym.make('HalfCheetah-v4', render_mode = 'rgb_array')
     if torch.cuda.is_available():
         device= 'cuda:0'
     else:
         device = 'cpu'
-    model = PPO(device).to(device)
+    actionspace = action_space_dim(env)
+    observationspace = observation_space_dim(env)
+    print('actionspace:{}'.format(actionspace))
+    print('observationspace:{}'.format(observationspace))
+    model = PPO(device, observationspace, actionspace).to(device)
     score = 0.0
     print_interval = 20
     rollout = []
 
+    import cv2
     for n_epi in range(10000):
         observation, info = env.reset()
         terminated = False
 
+        iterations = 0
         while not terminated:
+            if iterations >= 100:
+                break
+            iterations += 1
             for t in range(rollout_len):
                 mu, std = model.pi(torch.from_numpy(observation).float().to(device))
                 dist = Normal(mu, std)
                 action = dist.sample()
                 log_prob = dist.log_prob(action)
-                observation_prime, reward, terminated, truncated, info = env.step([action.item()])
-
-                rollout.append((observation, action, reward/10.0, observation_prime, log_prob.item(), terminated))
+                observation_prime, reward, terminated, truncated, info = env.step(action.cpu().numpy())
+                rollout.append((observation, action, reward/10.0, observation_prime, log_prob, terminated))
                 if len(rollout) == rollout_len:
                     model.put_data(rollout)
                     rollout = []
@@ -155,6 +198,13 @@ def main():
                 score += reward
                 if terminated:
                     break
+
+                # Render into buffer.
+                if n_epi > 260:
+                    frame = env.render()
+                    cv2.imshow('frame', frame)
+                    cv2.waitKey(1)
+
 
             model.train_net()
 

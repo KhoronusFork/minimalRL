@@ -47,11 +47,11 @@ class ReplayBuffer():
         return len(self.buffer)
 
 class PolicyNet(nn.Module):
-    def __init__(self, learning_rate):
+    def __init__(self, learning_rate, input_size, output_size):
         super(PolicyNet, self).__init__()
-        self.fc1 = nn.Linear(3, 128)
-        self.fc_mu = nn.Linear(128,1)
-        self.fc_std  = nn.Linear(128,1)
+        self.fc1 = nn.Linear(input_size, 128)
+        self.fc_mu = nn.Linear(128,output_size)
+        self.fc_std  = nn.Linear(128,output_size)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
         self.log_alpha = torch.tensor(np.log(init_alpha))
@@ -89,12 +89,12 @@ class PolicyNet(nn.Module):
         self.log_alpha_optimizer.step()
 
 class QNet(nn.Module):
-    def __init__(self, learning_rate):
+    def __init__(self, learning_rate, input_size, output_size):
         super(QNet, self).__init__()
-        self.fc_s = nn.Linear(3, 64)
-        self.fc_a = nn.Linear(1,64)
+        self.fc_s = nn.Linear(input_size, 64)
+        self.fc_a = nn.Linear(output_size,64)
         self.fc_cat = nn.Linear(128,32)
-        self.fc_out = nn.Linear(32,1)
+        self.fc_out = nn.Linear(32,output_size)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
     def forward(self, x, a):
@@ -129,32 +129,49 @@ def calc_target(pi, q1, q2, mini_batch):
 
     return target
     
+def action_space_dim(env):
+    if type(env.action_space) == gym.spaces.discrete.Discrete:
+        return env.action_space.n
+    else:
+        return env.action_space.shape[0]
+def observation_space_dim(env):
+    return env.observation_space.shape[0]
+
 def main():
-    env = gym.make('Pendulum-v1', render_mode = 'rgb_array')
+    #env = gym.make('Pendulum-v1', render_mode = 'rgb_array')
+    env = gym.make('HalfCheetah-v4', render_mode = 'rgb_array')
     if torch.cuda.is_available():
         device= 'cuda:0'
     else:
         device = 'cpu'
+    actionspace = action_space_dim(env)
+    observationspace = observation_space_dim(env)
+    print('actionspace:{}'.format(actionspace))
+    print('observationspace:{}'.format(observationspace))
+
     memory = ReplayBuffer(device)
-    q1, q2, q1_target, q2_target = QNet(lr_q).to(device), QNet(lr_q).to(device), QNet(lr_q).to(device), QNet(lr_q).to(device)
-    pi = PolicyNet(lr_pi).to(device)
+    q1, q2, q1_target, q2_target = QNet(lr_q, observationspace, actionspace).to(device), QNet(lr_q, observationspace, actionspace).to(device), QNet(lr_q, observationspace, actionspace).to(device), QNet(lr_q, observationspace, actionspace).to(device)
+    pi = PolicyNet(lr_pi, observationspace, actionspace).to(device)
 
     q1_target.load_state_dict(q1.state_dict())
     q2_target.load_state_dict(q2.state_dict())
 
     score = 0.0
-    print_interval = 20
+    print_interval = 1
 
     for n_epi in range(10000):
-        print('n_epi:{}'.format(n_epi))
+        #print('n_epi:{}'.format(n_epi))
         observation, info = env.reset()
         terminated = False
 
+        iteration = 0
         count = 0
-        while not terminated:
+        while not terminated and iteration < 1000:
+            iteration += 1
             action, log_prob= pi(torch.from_numpy(observation).float().to(device))
-            observation_prime, reward, terminated, truncated, info = env.step([2.0*action.item()])
-            memory.put((observation, action.item(), reward/10.0, observation_prime, terminated))
+            #observation_prime, reward, terminated, truncated, info = env.step([2.0*action.item()])
+            observation_prime, reward, terminated, truncated, info = env.step(2.0*action.detach().cpu().numpy())
+            memory.put((observation, action, reward/10.0, observation_prime, terminated))
             score += reward
             observation = observation_prime
             count += 1

@@ -13,6 +13,10 @@ r2d2 : Contiguous error. TODO: Fix
 ## Render
 dqn visualizes the render during the training (slow).
 
+## Note
+
+dqn : Discrete
+ppo, ppo-lstm : Discrete
 
 # From the original readme.md
 

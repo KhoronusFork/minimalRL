@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import numpy as np
 
 #Hyperparameters
 entropy_coef = 1e-2
@@ -34,7 +35,7 @@ class PPO(nn.Module):
     def pi(self, x):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
-        mu = 2 * F.tanh(self.fc_pi(x))
+        mu = 2 * torch.tanh(self.fc_pi(x))
         sigma = F.softplus(self.fc_sigma(x)) +1e-3
 
         return mu,sigma
@@ -60,7 +61,10 @@ class PPO(nn.Module):
             prob_a_lst.append([prob_a])
             done_mask = 0 if done else 1
             done_lst.append([done_mask])
-            
+
+        s_lst = np.array(s_lst)
+        r_lst = np.array(r_lst)
+        s_prime_lst = np.array(s_prime_lst)
         s,a,r,s_prime,done_mask, prob_a = torch.tensor(s_lst, dtype=torch.float).to(self.device), torch.tensor(a_lst).to(self.device), \
                                           torch.tensor(r_lst).to(self.device), torch.tensor(s_prime_lst, dtype=torch.float).to(self.device), \
                                           torch.tensor(done_lst, dtype=torch.float).to(self.device), torch.tensor(prob_a_lst).to(self.device)
@@ -108,14 +112,18 @@ def main(render = False):
         device = 'cpu'
     model = PPO(device).to(device)
 
-    print_interval = 20
+    print_interval = 1
     score = 0.0
     global_step = 0
     for n_epi in range(10000):
         observation, info = env.reset()
         terminated = False
 
+        iterations = 0
         while not terminated:
+            if iterations >= 100:
+                break
+            iterations += 1
             for t in range(T_horizon):
                 global_step += 1 
                 if render:    
