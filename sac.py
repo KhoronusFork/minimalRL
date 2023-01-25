@@ -138,8 +138,8 @@ def observation_space_dim(env):
     return env.observation_space.shape[0]
 
 def main():
-    #env = gym.make('Pendulum-v1', render_mode = 'rgb_array')
-    env = gym.make('HalfCheetah-v4', render_mode = 'rgb_array')
+    env = gym.make('Pendulum-v1', render_mode = 'rgb_array')
+    #env = gym.make('HalfCheetah-v4', render_mode = 'rgb_array')
     if torch.cuda.is_available():
         device= 'cuda:0'
     else:
@@ -166,7 +166,7 @@ def main():
 
         iteration = 0
         count = 0
-        while not terminated and iteration < 1000:
+        while not terminated and iteration < 10000:
             iteration += 1
             action, log_prob= pi(torch.from_numpy(observation).float().to(device))
             #observation_prime, reward, terminated, truncated, info = env.step([2.0*action.item()])
