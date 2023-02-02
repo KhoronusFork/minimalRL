@@ -227,12 +227,13 @@ class Actor:
     def run(self):
         for e in range(30000):
             done = False
+            truncated = False
             score = 0
             state, information = self.env.reset()
             state = torch.tensor(state, dtype=torch.float).to(self.device)
             target_hidden = hidden = (torch.zeros(1, 1, cell_size).to(self.device), torch.zeros(1, 1, cell_size).to(self.device))
 
-            while not done:
+            while not done and not truncated:
                 epsilon = max(0.01, self.epsilon - 0.01 * (e / 200))  # Linear annealing from 8% to 1%
                 with torch.no_grad():
                     q_value, new_hidden = self.q(state)

@@ -107,10 +107,12 @@ class PPO(nn.Module):
 def main(render = False):
     env = gym.make('Pendulum-v1', render_mode = 'rgb_array')
     if torch.cuda.is_available():
-        device= 'cuda:0'
+        device= 'cuda:1'
     else:
         device = 'cpu'
     model = PPO(device).to(device)
+
+    import cv2
 
     print_interval = 1
     score = 0.0
@@ -118,12 +120,8 @@ def main(render = False):
     for n_epi in range(10000):
         observation, info = env.reset()
         terminated = False
-
-        iterations = 0
-        while not terminated:
-            if iterations >= 100:
-                break
-            iterations += 1
+        truncated = False
+        while not terminated and not truncated:
             for t in range(T_horizon):
                 global_step += 1 
                 if render:    
@@ -142,6 +140,13 @@ def main(render = False):
                 score += reward
                 if terminated:
                     break
+
+                # Render into buffer.
+                if n_epi > 130:
+                    frame = env.render()
+                    cv2.imshow('PPO-Continuous-Improved', frame)
+                    cv2.waitKey(1)
+
             model.train_net()
         if n_epi%print_interval==0 and n_epi!=0:
             print("# of episode :{}, avg score : {:.1f}".format(n_epi, score/print_interval))

@@ -6,6 +6,18 @@ Original code at: https://github.com/seungeunrho/minimalRL
 
 Additional models from pull requests. Credit at the top of the file.
 
+## Original version - for gym (CPU)
+original_gym  
+The code requires gym==0.19.0  
+Please check the readme.md in the folder for more information.  
+
+## Original version - adapted for gymnasium (CPU)
+Updated the code to work with gymnasium package.  
+Only ppo-continuous and sac are updated.  
+
+## MinimalRL
+A different implementation of popular RL algorithms.  
+
 ## Not completed
 ppo-continuous, ppo-continuous-improved: Termination is hard to reach in short amount of time.
 r2d2 : Contiguous error. TODO: Fix
@@ -14,9 +26,12 @@ r2d2 : Contiguous error. TODO: Fix
 dqn visualizes the render during the training (slow).
 
 ## Note
+The algorithms in the root folders are tested with gymnasium and where possible execute on a GPU device.  
+The algorithms are for a discrete space, if not indicated differently.  
 
-dqn : Discrete
-ppo, ppo-lstm : Discrete
+### Continuous
+ddpg, ppo-continuous-improved, ppo-continuous, sac  
+ppo-continuous : Does not converge :/  
 
 # From the original readme.md
 

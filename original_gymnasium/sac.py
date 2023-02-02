@@ -19,9 +19,8 @@ target_entropy  = -1.0 # for automated alpha update
 lr_alpha        = 0.001  # for automated alpha update
 
 class ReplayBuffer():
-    def __init__(self, device):
+    def __init__(self):
         self.buffer = collections.deque(maxlen=buffer_limit)
-        self.device = device
 
     def put(self, transition):
         self.buffer.append(transition)
@@ -39,19 +38,19 @@ class ReplayBuffer():
             done_mask = 0.0 if done else 1.0 
             done_mask_lst.append([done_mask])
         
-        return torch.tensor(s_lst, dtype=torch.float).to(self.device), torch.tensor(a_lst, dtype=torch.float).to(self.device), \
-                torch.tensor(r_lst, dtype=torch.float).to(self.device), torch.tensor(s_prime_lst, dtype=torch.float).to(self.device), \
-                torch.tensor(done_mask_lst, dtype=torch.float).to(self.device)
+        return torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst, dtype=torch.float), \
+                torch.tensor(r_lst, dtype=torch.float), torch.tensor(s_prime_lst, dtype=torch.float), \
+                torch.tensor(done_mask_lst, dtype=torch.float)
     
     def size(self):
         return len(self.buffer)
 
 class PolicyNet(nn.Module):
-    def __init__(self, learning_rate, input_size, output_size):
+    def __init__(self, learning_rate):
         super(PolicyNet, self).__init__()
-        self.fc1 = nn.Linear(input_size, 128)
-        self.fc_mu = nn.Linear(128,output_size)
-        self.fc_std  = nn.Linear(128,output_size)
+        self.fc1 = nn.Linear(3, 128)
+        self.fc_mu = nn.Linear(128,1)
+        self.fc_std  = nn.Linear(128,1)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
         self.log_alpha = torch.tensor(np.log(init_alpha))
@@ -89,12 +88,12 @@ class PolicyNet(nn.Module):
         self.log_alpha_optimizer.step()
 
 class QNet(nn.Module):
-    def __init__(self, learning_rate, input_size, output_size):
+    def __init__(self, learning_rate):
         super(QNet, self).__init__()
-        self.fc_s = nn.Linear(input_size, 64)
-        self.fc_a = nn.Linear(output_size,64)
+        self.fc_s = nn.Linear(3, 64)
+        self.fc_a = nn.Linear(1,64)
         self.fc_cat = nn.Linear(128,32)
-        self.fc_out = nn.Linear(32,output_size)
+        self.fc_out = nn.Linear(32,1)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
     def forward(self, x, a):
@@ -129,55 +128,40 @@ def calc_target(pi, q1, q2, mini_batch):
 
     return target
     
-def action_space_dim(env):
-    if type(env.action_space) == gym.spaces.discrete.Discrete:
-        return env.action_space.n
-    else:
-        return env.action_space.shape[0]
-def observation_space_dim(env):
-    return env.observation_space.shape[0]
-
 def main():
     env = gym.make('Pendulum-v1', render_mode = 'rgb_array')
-    #env = gym.make('HalfCheetah-v4', render_mode = 'rgb_array')
-    if torch.cuda.is_available():
-        device= 'cuda:0'
-    else:
-        device = 'cpu'
-    actionspace = action_space_dim(env)
-    observationspace = observation_space_dim(env)
-    print('actionspace:{}'.format(actionspace))
-    print('observationspace:{}'.format(observationspace))
-
-    memory = ReplayBuffer(device)
-    q1, q2, q1_target, q2_target = QNet(lr_q, observationspace, actionspace).to(device), QNet(lr_q, observationspace, actionspace).to(device), QNet(lr_q, observationspace, actionspace).to(device), QNet(lr_q, observationspace, actionspace).to(device)
-    pi = PolicyNet(lr_pi, observationspace, actionspace).to(device)
+    memory = ReplayBuffer()
+    q1, q2, q1_target, q2_target = QNet(lr_q), QNet(lr_q), QNet(lr_q), QNet(lr_q)
+    pi = PolicyNet(lr_pi)
 
     q1_target.load_state_dict(q1.state_dict())
     q2_target.load_state_dict(q2.state_dict())
 
     score = 0.0
-    print_interval = 1
+    print_interval = 20
 
     import cv2
+    import time
+    start_time = time.time()
     for n_epi in range(10000):
-        #print('n_epi:{}'.format(n_epi))
-        observation, info = env.reset()
-        terminated = False
-        truncated = False
-        while not terminated and not truncated:
-            action, log_prob= pi(torch.from_numpy(observation).float().to(device))
-            #observation_prime, reward, terminated, truncated, info = env.step([2.0*action.item()])
-            observation_prime, reward, terminated, truncated, info = env.step(2.0*action.detach().cpu().numpy())
-            memory.put((observation, action, reward/10.0, observation_prime, terminated))
-            score += reward
-            observation = observation_prime
+        s, info = env.reset()
+        done = False
+        trunc = False
+
+        while not done and not trunc:
+            a, log_prob= pi(torch.from_numpy(s).float())
+            s_prime, r, done, trunc, info = env.step([2.0*a.item()])
+            memory.put((s, a.item(), r/10.0, s_prime, done))
+            score +=r
+            s = s_prime
+
             # Render into buffer.
-            if n_epi > 260:
+            if False and n_epi >= 0:
                 frame = env.render()
-                cv2.imshow('SAC', frame)
+                cv2.imshow('frame', frame)
                 cv2.waitKey(1)
 
+                
         if memory.size()>1000:
             for i in range(20):
                 mini_batch = memory.sample(batch_size)
@@ -190,6 +174,7 @@ def main():
                 
         if n_epi%print_interval==0 and n_epi!=0:
             print("# of episode :{}, avg score : {:.1f} alpha:{:.4f}".format(n_epi, score/print_interval, pi.log_alpha.exp()))
+            print("--- forward %s seconds ---" % (time.time() - start_time))        
             score = 0.0
 
     env.close()

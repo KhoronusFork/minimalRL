@@ -118,7 +118,7 @@ def main():
             observation = observation_prime
 
             score += reward
-            if terminated:
+            if terminated or truncated:
                 s = (env.reset())
                 score_lst.append(score)
                 score = 0

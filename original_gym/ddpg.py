@@ -1,4 +1,4 @@
-import gymnasium as gym
+import gym
 import random
 import collections
 import numpy as np
@@ -16,9 +16,8 @@ buffer_limit = 50000
 tau          = 0.005 # for target network soft update
 
 class ReplayBuffer():
-    def __init__(self, device):
+    def __init__(self):
         self.buffer = collections.deque(maxlen=buffer_limit)
-        self.device = device
 
     def put(self, transition):
         self.buffer.append(transition)
@@ -36,9 +35,9 @@ class ReplayBuffer():
             done_mask = 0.0 if done else 1.0 
             done_mask_lst.append([done_mask])
         
-        return torch.tensor(s_lst, dtype=torch.float).to(self.device), torch.tensor(a_lst, dtype=torch.float).to(self.device), \
-                torch.tensor(r_lst, dtype=torch.float).to(self.device), torch.tensor(s_prime_lst, dtype=torch.float).to(self.device), \
-                torch.tensor(done_mask_lst, dtype=torch.float).to(self.device)
+        return torch.tensor(s_lst, dtype=torch.float), torch.tensor(a_lst, dtype=torch.float), \
+                torch.tensor(r_lst, dtype=torch.float), torch.tensor(s_prime_lst, dtype=torch.float), \
+                torch.tensor(done_mask_lst, dtype=torch.float)
     
     def size(self):
         return len(self.buffer)
@@ -103,16 +102,12 @@ def soft_update(net, net_target):
         param_target.data.copy_(param_target.data * (1.0 - tau) + param.data * tau)
     
 def main():
-    env = gym.make('Pendulum-v1', render_mode = 'rgb_array')
-    if torch.cuda.is_available():
-        device= 'cuda:0'
-    else:
-        device = 'cpu'
-    memory = ReplayBuffer(device)
+    env = gym.make('Pendulum-v0')
+    memory = ReplayBuffer()
 
-    q, q_target = QNet().to(device), QNet().to(device)
+    q, q_target = QNet(), QNet()
     q_target.load_state_dict(q.state_dict())
-    mu, mu_target = MuNet().to(device), MuNet().to(device)
+    mu, mu_target = MuNet(), MuNet()
     mu_target.load_state_dict(mu.state_dict())
 
     score = 0.0
@@ -123,17 +118,16 @@ def main():
     ou_noise = OrnsteinUhlenbeckNoise(mu=np.zeros(1))
 
     for n_epi in range(10000):
-        observation, info = env.reset()
-        terminated = False
-        truncated = False
-        while not terminated and not truncated:
-            action = mu(torch.from_numpy(observation).float().to(device)) 
-            action = action.item() + ou_noise()[0]
-            observation_prime, reward, terminated, truncated, info = env.step([action])
-
-            memory.put((observation,action,reward/100.0,observation_prime,terminated))
-            score += reward
-            observation = observation_prime
+        s = env.reset()
+        done = False
+        
+        while not done:
+            a = mu(torch.from_numpy(s).float()) 
+            a = a.item() + ou_noise()[0]
+            s_prime, r, done, info = env.step([a])
+            memory.put((s,a,r/100.0,s_prime,done))
+            score +=r
+            s = s_prime
                 
         if memory.size()>2000:
             for i in range(10):

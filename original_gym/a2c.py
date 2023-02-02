@@ -1,4 +1,4 @@
-import gymnasium as gym
+import gym
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -35,19 +35,18 @@ class ActorCritic(nn.Module):
 
 def worker(worker_id, master_end, worker_end):
     master_end.close()  # Forbid worker to use the master end for messaging
-    env = gym.make('CartPole-v1', render_mode = 'rgb_array')
-    #env.seed(worker_id)
+    env = gym.make('CartPole-v1')
+    env.seed(worker_id)
 
     while True:
         cmd, data = worker_end.recv()
         if cmd == 'step':
-            #ob, reward, done, info = env.step(data)
-            ob, reward, done, truncated, info = env.step(data)
+            ob, reward, done, info = env.step(data)
             if done:
-                ob, info = env.reset()
+                ob = env.reset()
             worker_end.send((ob, reward, done, info))
         elif cmd == 'reset':
-            ob, info = env.reset()
+            ob = env.reset()
             worker_end.send(ob)
         elif cmd == 'reset_task':
             ob = env.reset_task()
@@ -90,7 +89,7 @@ class ParallelEnv:
         results = [master_end.recv() for master_end in self.master_ends]
         self.waiting = False
         obs, rews, dones, infos = zip(*results)
-        return np.stack(obs), np.stack(rews), np.stack(dones), np.stack(infos)
+        return np.stack(obs), np.stack(rews), np.stack(dones), infos
 
     def reset(self):
         for master_end in self.master_ends:
@@ -112,22 +111,21 @@ class ParallelEnv:
             worker.join()
             self.closed = True
 
-def test(step_idx, model, device):
-    env = gym.make('CartPole-v1', render_mode = 'rgb_array')
+def test(step_idx, model):
+    env = gym.make('CartPole-v1')
     score = 0.0
+    done = False
     num_test = 10
 
     for _ in range(num_test):
-        observation, info = env.reset()
-        terminated = False
-        truncated = False
-        while not terminated and not truncated:
-            prob = model.pi(torch.from_numpy(observation).float().to(device), softmax_dim=0)
-            action = Categorical(prob).sample().cpu().numpy()
-            observation_prime, reward, terminated, truncated, info = env.step(action)
-            observation = observation_prime
-            score += reward
-        terminated = False
+        s = env.reset()
+        while not done:
+            prob = model.pi(torch.from_numpy(s).float(), softmax_dim=0)
+            a = Categorical(prob).sample().numpy()
+            s_prime, r, done, info = env.step(a)
+            s = s_prime
+            score += r
+        done = False
     print(f"Step # :{step_idx}, avg score : {score/num_test:.1f}")
 
     env.close()
@@ -143,13 +141,9 @@ def compute_target(v_final, r_lst, mask_lst):
     return torch.tensor(td_target[::-1]).float()
 
 if __name__ == '__main__':
-    if torch.cuda.is_available():
-        device= 'cuda:0'
-    else:
-        device = 'cpu'
     envs = ParallelEnv(n_train_processes)
 
-    model = ActorCritic().to(device)
+    model = ActorCritic()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     step_idx = 0
@@ -157,8 +151,8 @@ if __name__ == '__main__':
     while step_idx < max_train_steps:
         s_lst, a_lst, r_lst, mask_lst = list(), list(), list(), list()
         for _ in range(update_interval):
-            prob = model.pi(torch.from_numpy(s).float().to(device))
-            a = Categorical(prob).sample().cpu().numpy()
+            prob = model.pi(torch.from_numpy(s).float())
+            a = Categorical(prob).sample().numpy()
             s_prime, r, done, info = envs.step(a)
 
             s_lst.append(s)
@@ -169,25 +163,25 @@ if __name__ == '__main__':
             s = s_prime
             step_idx += 1
 
-        s_final = torch.from_numpy(s_prime).float().to(device)
-        v_final = model.v(s_final).detach().cpu().clone().numpy()
+        s_final = torch.from_numpy(s_prime).float()
+        v_final = model.v(s_final).detach().clone().numpy()
         td_target = compute_target(v_final, r_lst, mask_lst)
 
         td_target_vec = td_target.reshape(-1)
-        s_vec = torch.tensor(s_lst).float().reshape(-1, 4).to(device)  # 4 == Dimension of state
-        a_vec = torch.tensor(a_lst).reshape(-1).unsqueeze(1).to(device)
-        advantage = td_target_vec.to(device) - model.v(s_vec).reshape(-1)
+        s_vec = torch.tensor(s_lst).float().reshape(-1, 4)  # 4 == Dimension of state
+        a_vec = torch.tensor(a_lst).reshape(-1).unsqueeze(1)
+        advantage = td_target_vec - model.v(s_vec).reshape(-1)
 
         pi = model.pi(s_vec, softmax_dim=1)
         pi_a = pi.gather(1, a_vec).reshape(-1)
-        loss = -(torch.log(pi_a).to(device) * advantage.detach()).mean() +\
-            F.smooth_l1_loss(model.v(s_vec).reshape(-1).to(device), td_target_vec.to(device))
+        loss = -(torch.log(pi_a) * advantage.detach()).mean() +\
+            F.smooth_l1_loss(model.v(s_vec).reshape(-1), td_target_vec)
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
         if step_idx % PRINT_INTERVAL == 0:
-            test(step_idx, model, device)
+            test(step_idx, model)
 
     envs.close()

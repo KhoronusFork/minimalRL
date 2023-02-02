@@ -140,7 +140,7 @@ class Actor:
 
             self.episode_reward += reward
 
-            if terminated:  # episode ends
+            if terminated or truncated:  # episode ends
                 self.state, info = self.env.reset()
                 self.n_episodes += 1
 
