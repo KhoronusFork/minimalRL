@@ -6,7 +6,7 @@ import argparse
 from normalization import Normalization, RewardScaling
 from replaybuffer import ReplayBuffer
 from ppo_continuous import PPO_continuous
-
+import cv2
 
 def evaluate_policy(args, env, agent, state_norm):
     times = 3
@@ -16,8 +16,9 @@ def evaluate_policy(args, env, agent, state_norm):
         if args.use_state_norm:
             s = state_norm(s, update=False)  # During the evaluating,update=False
         done = False
+        truncated = False
         episode_reward = 0
-        while not done:
+        while not done and not truncated:
             a = agent.evaluate(s)  # We use the deterministic policy during the evaluating
             if args.policy_dist == "Beta":
                 action = 2 * (a - 0.5) * args.max_action  # [0,1]->[-max,max]
@@ -28,6 +29,12 @@ def evaluate_policy(args, env, agent, state_norm):
                 s_ = state_norm(s_, update=False)
             episode_reward += r
             s = s_
+
+            if True:
+                frame = env.render()
+                cv2.imshow('PPO_Continuous_main', frame)
+                cv2.waitKey(1)
+
         evaluate_reward += episode_reward
 
     return evaluate_reward / times
@@ -35,7 +42,7 @@ def evaluate_policy(args, env, agent, state_norm):
 
 def main(args, env_name, number, seed):
     env = gym.make(env_name)
-    env_evaluate = gym.make(env_name)  # When evaluating the policy, we need to rebuild an environment
+    env_evaluate = gym.make(env_name, render_mode = 'rgb_array')  # When evaluating the policy, we need to rebuild an environment
     # Set random seed
     #env.seed(seed)
     env.action_space.seed(seed)
@@ -78,7 +85,8 @@ def main(args, env_name, number, seed):
             reward_scaling.reset()
         episode_steps = 0
         done = False
-        while not done:
+        truncated = False
+        while not done and not truncated:
             episode_steps += 1
             a, a_logprob = agent.choose_action(s)  # Action and the corresponding log probability
             if args.policy_dist == "Beta":
@@ -113,7 +121,6 @@ def main(args, env_name, number, seed):
                 replay_buffer.count = 0
 
             # Evaluate the policy every 'evaluate_freq' steps
-            print('total_steps:{}'.format(total_steps))
             if total_steps % args.evaluate_freq == 0:
                 evaluate_num += 1
                 evaluate_reward = evaluate_policy(args, env_evaluate, agent, state_norm)
@@ -122,7 +129,11 @@ def main(args, env_name, number, seed):
                 writer.add_scalar('step_rewards_{}'.format(env_name), evaluate_rewards[-1], global_step=total_steps)
                 # Save the rewards
                 if evaluate_num % args.save_freq == 0:
-                    np.save('./data_train/PPO_continuous_{}_env_{}_number_{}_seed_{}.npy'.format(args.policy_dist, env_name, number, seed), np.array(evaluate_rewards))
+                    import os
+                    directory = './data_train'
+                    if not os.path.exists(directory):
+                        os.makedirs(directory)                    
+                    np.save('{}/PPO_continuous_{}_env_{}_number_{}_seed_{}.npy'.format(directory, args.policy_dist, env_name, number, seed), np.array(evaluate_rewards))
 
 
 if __name__ == '__main__':

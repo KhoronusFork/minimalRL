@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -184,12 +184,13 @@ def evaluate_policy(env, agent):
     times = 3  # Perform three evaluations and calculate the average
     evaluate_reward = 0
     for _ in range(times):
-        s = env.reset()
+        s, info = env.reset()
         done = False
+        trunc = False
         episode_reward = 0
-        while not done:
+        while not done and not trunc:
             a = agent.choose_action(s, deterministic=True)  # We use the deterministic policy during the evaluating
-            s_, r, done, _ = env.step(a)
+            s_, r, done, trunc, _ = env.step(a)
             episode_reward += r
             s = s_
         evaluate_reward += episode_reward
@@ -207,19 +208,20 @@ def reward_adapter(r, env_index):
 
 
 if __name__ == '__main__':
-    env_name = ['Pendulum-v1', 'BipedalWalker-v3', 'HalfCheetah-v2', 'Hopper-v2', 'Walker2d-v2']
+    env_name = ['Pendulum-v1', 'BipedalWalker-v3', 'HalfCheetah-v4', 'Hopper-v2', 'Walker2d-v2']
     env_index = 0
     env = gym.make(env_name[env_index])
     env_evaluate = gym.make(env_name[env_index])  # When evaluating the policy, we need to rebuild an environment
     number = 1
     seed = 0
     # Set random seed
-    env.seed(seed)
+    #env.seed(seed)
     env.action_space.seed(seed)
-    env_evaluate.seed(seed)
+    #env_evaluate.seed(seed)
     env_evaluate.action_space.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+
 
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
@@ -244,21 +246,24 @@ if __name__ == '__main__':
     total_steps = 0  # Record the total steps during the training
 
     while total_steps < max_train_steps:
-        s = env.reset()
+        s, info = env.reset()
         episode_steps = 0
         done = False
-        while not done:
+        trunc = False
+        while not done and not trunc:
             episode_steps += 1
             if total_steps < random_steps:  # Take the random actions in the beginning for the better exploration
                 a = env.action_space.sample()
             else:
                 a = agent.choose_action(s)
-            s_, r, done, _ = env.step(a)
+            s_, r, done, trunc, _ = env.step(a)
             r = reward_adapter(r, env_index)  # Adjust rewards for better performance
             # When dead or win or reaching the max_episode_steps, done will be Ture, we need to distinguish them;
             # dw means dead or win,there is no next state s';
             # but when reaching the max_episode_steps,there is a next state s' actually.
             if done and episode_steps != max_episode_steps:
+                dw = True
+            elif trunc: # added (correct?)
                 dw = True
             else:
                 dw = False
@@ -277,6 +282,10 @@ if __name__ == '__main__':
                 writer.add_scalar('step_rewards_{}'.format(env_name[env_index]), evaluate_reward, global_step=total_steps)
                 # Save the rewards
                 if evaluate_num % 10 == 0:
-                    np.save('./data_train/SAC_env_{}_number_{}_seed_{}.npy'.format(env_name[env_index], number, seed), np.array(evaluate_rewards))
+                    import os
+                    directory = './data_train'
+                    if not os.path.exists(directory):
+                        os.makedirs(directory)                    
+                    np.save('{}/SAC_env_{}_number_{}_seed_{}.npy'.format(directory, env_name[env_index], number, seed), np.array(evaluate_rewards))
 
             total_steps += 1
