@@ -15,22 +15,22 @@ Please check the readme.md in the folder for more information.
 Updated the code to work with gymnasium package.  
 Only ppo-continuous and sac are updated.  
 Note: Tested with Pendulum-v1
-'''batch
+```bash
 minimalRL/original_gymnasium$ python ppo-continuous.py  
-'''
+```
 
 ## DRL-code-pytorch - adapted for gymnasium (CPU)  
 PPO-continuous
 Note: Tested with HalfCheetah-v4  
-'''batch
+```bash
 minimalRL/DRL-code-pytorch/5.PPO-continuous$ python PPO_continuous_main.py
-'''
+```
 
 ## MinimalRL
 A different implementation of popular RL algorithms (may not converge).  
-'''batch
+```bash
 minimalRL$ python ppo-continuous-improved.py
-'''
+```
 Note: Tested with Pendulum-v1. It renders the environment after 130 episodes.  
 
 ### Render
