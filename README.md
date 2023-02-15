@@ -14,24 +14,35 @@ Please check the readme.md in the folder for more information.
 ## Original version - adapted for gymnasium (CPU)
 Updated the code to work with gymnasium package.  
 Only ppo-continuous and sac are updated.  
+Note: Tested with Pendulum-v1
+'''batch
+minimalRL/original_gymnasium$ python ppo-continuous.py  
+'''
+
+## DRL-code-pytorch - adapted for gymnasium (CPU)  
+PPO-continuous
+Note: Tested with HalfCheetah-v4  
+'''batch
+minimalRL/DRL-code-pytorch/5.PPO-continuous$ python PPO_continuous_main.py
+'''
 
 ## MinimalRL
-A different implementation of popular RL algorithms.  
+A different implementation of popular RL algorithms (may not converge).  
+'''batch
+minimalRL$ python ppo-continuous-improved.py
+'''
+Note: Tested with Pendulum-v1. It renders the environment after 130 episodes.  
 
-## Not completed
-ppo-continuous, ppo-continuous-improved: Termination is hard to reach in short amount of time.
-r2d2 : Contiguous error. TODO: Fix
-
-## Render
+### Render
 dqn visualizes the render during the training (slow).
 
-## Note
+### Note
 The algorithms in the root folders are tested with gymnasium and where possible execute on a GPU device.  
 The algorithms are for a discrete space, if not indicated differently.  
-
-### Continuous
-ddpg, ppo-continuous-improved, ppo-continuous, sac  
-ppo-continuous : Does not converge :/  
+Continuous space:  
+- ddpg, ppo-continuous-improved, ppo-continuous, sac  
+- ppo-continuous : Does not converge :/  
+r2d2 : Contiguous error. TODO: Fix  
 
 # From the original readme.md
 

@@ -1,0 +1,4 @@
+opencv-python
+tensorboard
+gymnasium[mujoco]
+gymnasium[classic-control]
