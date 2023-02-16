@@ -115,6 +115,7 @@ def main():
         device= 'cuda:0'
     else:
         device = 'cpu'
+    print('device:{}'.format(device))
     memory = ReplayBuffer(device)
     model = ActorCritic().to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)

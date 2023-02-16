@@ -164,6 +164,7 @@ def main():
         device= 'cuda:0'
     else:
         device = 'cpu'
+    print('device:{}'.format(device))
     actionspace = action_space_dim(env)
     observationspace = observation_space_dim(env)
     print('actionspace:{}'.format(actionspace))

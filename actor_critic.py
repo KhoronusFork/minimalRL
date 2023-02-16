@@ -71,6 +71,7 @@ def main():
         device= 'cuda:0'
     else:
         device = 'cpu'
+    print('device:{}'.format(device))
     model = ActorCritic(device).to(device)    
     print_interval = 20
     score = 0.0

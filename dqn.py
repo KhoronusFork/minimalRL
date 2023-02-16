@@ -83,6 +83,7 @@ def main():
         device= 'cuda:0'
     else:
         device = 'cpu'
+    print('device:{}'.format(device))
 
     q = Qnet()
     q_target = Qnet()

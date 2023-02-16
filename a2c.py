@@ -147,6 +147,7 @@ if __name__ == '__main__':
         device= 'cuda:0'
     else:
         device = 'cpu'
+    print('device:{}'.format(device))
     envs = ParallelEnv(n_train_processes)
 
     model = ActorCritic().to(device)

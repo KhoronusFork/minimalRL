@@ -158,6 +158,7 @@ def main():
         device= 'cuda:0'
     else:
         device = 'cpu'
+    print('device:{}'.format(device))
     model = Qnet().to(device)
     target_model = Qnet().to(device)
     target_model.load_state_dict(model.state_dict())

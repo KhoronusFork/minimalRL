@@ -8,6 +8,8 @@ from torch.distributions import Categorical
 import time
 import numpy as np
 
+import cv2
+
 #Hyperparameters
 learning_rate = 0.0005
 gamma         = 0.98
@@ -105,6 +107,7 @@ def main():
         device= 'cuda:0'
     else:
         device = 'cpu'
+    print('device:{}'.format(device))
     model = PPO(device).to(device)
     score = 0.0
     print_interval = 20
@@ -129,6 +132,13 @@ def main():
                 score += reward
                 if terminated:
                     break
+
+                # Render into buffer.
+                if n_epi > 200:
+                    frame = env.render()
+                    cv2.imshow('PPO-LSTM', frame)
+                    cv2.waitKey(1)
+
                     
             model.train_net()
 

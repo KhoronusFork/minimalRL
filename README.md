@@ -27,11 +27,24 @@ minimalRL/DRL-code-pytorch/5.PPO-continuous$ python PPO_continuous_main.py
 ```
 
 ## MinimalRL
-A different implementation of popular RL algorithms (may not converge).  
+A different implementation of popular RL algorithms (minimalRL$).  
 ```bash
-minimalRL$ python ppo-continuous-improved.py
+python a2c.py
+python a3c.py
+python acer.py
+python actor_critic.py
+python ape-x.py
+python dqn.py
+python ppo-continuous-improved.py
+python ppo-lstm.py
+python ppo-minibatch.py
+python ppo.py
+python REINFORCE.py
+python sac.py
+python vtrace.py
 ```
-Note: Tested with Pendulum-v1. It renders the environment after 130 episodes.  
+
+The bad implementations have a suffix -bad.py at the end.  
 
 ### Render
 dqn visualizes the render during the training (slow).

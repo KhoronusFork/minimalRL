@@ -110,6 +110,7 @@ def main(render = False):
         device= 'cuda:1'
     else:
         device = 'cpu'
+    print('device:{}'.format(device))
     model = PPO(device).to(device)
 
     import cv2

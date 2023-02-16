@@ -120,6 +120,7 @@ if __name__ == '__main__':
         device= 'cuda:0'
     else:
         device = 'cpu'
+    print('device:{}'.format(device))
     global_model = ActorCritic().to(device)
     global_model.share_memory()
     processes = []

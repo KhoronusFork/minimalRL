@@ -108,6 +108,7 @@ def main():
         device= 'cuda:0'
     else:
         device = 'cpu'
+    print('device:{}'.format(device))
     memory = ReplayBuffer(device)
 
     q, q_target = QNet().to(device), QNet().to(device)

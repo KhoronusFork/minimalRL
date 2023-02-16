@@ -99,6 +99,7 @@ def main():
         device= 'cuda:0'
     else:
         device = 'cpu'
+    print('device:{}'.format(device))
     model = PPO(device).to(device)
     score = 0.0
     print_interval = 20
