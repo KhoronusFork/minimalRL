@@ -19,7 +19,7 @@ Note: Tested with Pendulum-v1
 minimalRL/original_gymnasium$ python ppo-continuous.py  
 ```
 
-## DRL-code-pytorch - adapted for gymnasium (CPU)  
+## DRL-code-pytorch - adapted for gymnasium (GPU-CPU)  
 PPO-continuous
 Note: Tested with HalfCheetah-v4  
 ```bash
