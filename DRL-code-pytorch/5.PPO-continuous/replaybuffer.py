@@ -23,13 +23,13 @@ class ReplayBuffer:
         self.done[self.count] = done
         self.count += 1
 
-    def numpy_to_tensor(self):
-        s = torch.tensor(self.s, dtype=torch.float)
-        a = torch.tensor(self.a, dtype=torch.float)
-        a_logprob = torch.tensor(self.a_logprob, dtype=torch.float)
-        r = torch.tensor(self.r, dtype=torch.float)
-        s_ = torch.tensor(self.s_, dtype=torch.float)
-        dw = torch.tensor(self.dw, dtype=torch.float)
-        done = torch.tensor(self.done, dtype=torch.float)
+    def numpy_to_tensor(self, device):
+        s = torch.tensor(self.s, dtype=torch.float).to(device)
+        a = torch.tensor(self.a, dtype=torch.float).to(device)
+        a_logprob = torch.tensor(self.a_logprob, dtype=torch.float).to(device)
+        r = torch.tensor(self.r, dtype=torch.float).to(device)
+        s_ = torch.tensor(self.s_, dtype=torch.float).to(device)
+        dw = torch.tensor(self.dw, dtype=torch.float).to(device)
+        done = torch.tensor(self.done, dtype=torch.float).to(device)
 
         return s, a, a_logprob, r, s_, dw, done

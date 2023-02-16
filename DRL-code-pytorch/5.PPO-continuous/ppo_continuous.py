@@ -115,12 +115,14 @@ class PPO_continuous():
         self.use_grad_clip = args.use_grad_clip
         self.use_lr_decay = args.use_lr_decay
         self.use_adv_norm = args.use_adv_norm
+        self.device = args.device
+        print('device:{}'.format(self.device))
 
         if self.policy_dist == "Beta":
-            self.actor = Actor_Beta(args)
+            self.actor = Actor_Beta(args).to(self.device)
         else:
-            self.actor = Actor_Gaussian(args)
-        self.critic = Critic(args)
+            self.actor = Actor_Gaussian(args).to(self.device)
+        self.critic = Critic(args).to(self.device)
 
         if self.set_adam_eps:  # Trick 9: set Adam epsilon=1e-5
             self.optimizer_actor = torch.optim.Adam(self.actor.parameters(), lr=self.lr_a, eps=1e-5)
@@ -130,15 +132,15 @@ class PPO_continuous():
             self.optimizer_critic = torch.optim.Adam(self.critic.parameters(), lr=self.lr_c)
 
     def evaluate(self, s):  # When evaluating the policy, we only use the mean
-        s = torch.unsqueeze(torch.tensor(s, dtype=torch.float), 0)
+        s = torch.unsqueeze(torch.tensor(s, dtype=torch.float), 0).to(self.device)
         if self.policy_dist == "Beta":
-            a = self.actor.mean(s).detach().numpy().flatten()
+            a = self.actor.mean(s).cpu().detach().numpy().flatten()
         else:
-            a = self.actor(s).detach().numpy().flatten()
+            a = self.actor(s).cpu().detach().numpy().flatten()
         return a
 
     def choose_action(self, s):
-        s = torch.unsqueeze(torch.tensor(s, dtype=torch.float), 0)
+        s = torch.unsqueeze(torch.tensor(s, dtype=torch.float), 0).to(self.device)
         if self.policy_dist == "Beta":
             with torch.no_grad():
                 dist = self.actor.get_dist(s)
@@ -150,10 +152,10 @@ class PPO_continuous():
                 a = dist.sample()  # Sample the action according to the probability distribution
                 a = torch.clamp(a, -self.max_action, self.max_action)  # [-max,max]
                 a_logprob = dist.log_prob(a)  # The log probability density of the action
-        return a.numpy().flatten(), a_logprob.numpy().flatten()
+        return a.cpu().numpy().flatten(), a_logprob.cpu().numpy().flatten()
 
     def update(self, replay_buffer, total_steps):
-        s, a, a_logprob, r, s_, dw, done = replay_buffer.numpy_to_tensor()  # Get training data
+        s, a, a_logprob, r, s_, dw, done = replay_buffer.numpy_to_tensor(self.device)  # Get training data
         """
             Calculate the advantage using GAE
             'dw=True' means dead or win, there is no next state s'
@@ -165,10 +167,10 @@ class PPO_continuous():
             vs = self.critic(s)
             vs_ = self.critic(s_)
             deltas = r + self.gamma * (1.0 - dw) * vs_ - vs
-            for delta, d in zip(reversed(deltas.flatten().numpy()), reversed(done.flatten().numpy())):
+            for delta, d in zip(reversed(deltas.cpu().flatten().numpy()), reversed(done.cpu().flatten().numpy())):
                 gae = delta + self.gamma * self.lamda * gae * (1.0 - d)
                 adv.insert(0, gae)
-            adv = torch.tensor(adv, dtype=torch.float).view(-1, 1)
+            adv = torch.tensor(adv, dtype=torch.float).view(-1, 1).to(self.device)
             v_target = adv + vs
             if self.use_adv_norm:  # Trick 1:advantage normalization
                 adv = ((adv - adv.mean()) / (adv.std() + 1e-5))

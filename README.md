@@ -26,7 +26,7 @@ Note: Tested with HalfCheetah-v4
 minimalRL/DRL-code-pytorch/5.PPO-continuous$ python PPO_continuous_main.py
 ```
 
-## MinimalRL
+## MinimalRL (GPU-CPU)
 A different implementation of popular RL algorithms (minimalRL$).  
 ```bash
 python a2c.py

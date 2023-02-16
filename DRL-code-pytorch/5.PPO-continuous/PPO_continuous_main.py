@@ -161,6 +161,7 @@ if __name__ == '__main__':
     parser.add_argument("--use_orthogonal_init", type=bool, default=True, help="Trick 8: orthogonal initialization")
     parser.add_argument("--set_adam_eps", type=float, default=True, help="Trick 9: set Adam epsilon=1e-5")
     parser.add_argument("--use_tanh", type=float, default=True, help="Trick 10: tanh activation function")
+    parser.add_argument("--device", type=str, default='cuda:0', help="Which device is used (i.e. cpu/cuda)")
 
     args = parser.parse_args()
 
